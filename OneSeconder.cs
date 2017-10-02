@@ -1,3 +1,34 @@
+/*
+one-seconder
+Copyright 2017, Fons van der Plas
+http://github.com/fons-/one-seconder
+
+AFTER SELECTING SECONDS:
+
+Combine videos using:
+ffmpeg -f concat -safe 0 -i mkvlist.txt -c:v libx264 -strict -2 out.mp4
+
+Where mkvlist.txt looks like:
+
+file './2017-08-15.mkv'
+file './2017-08-31.mkv'
+file './2017-09-01.mkv'
+etc
+
+BEFORE SELECTING SECONDS:
+
+Rotate video with:
+
+ffmpeg -i in.mov -vf 'transpose=2' -strict -2 out.mov
+
+1 = 90Clockwise
+2 = 90CounterClockwise
+
+Pad a vertical video with:
+
+ffmpeg -i IMG_0131.MOV -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -strict -2 IMG_0131_pad.mov
+*/
+
 using System;
 using System.IO;
 using System.Collections.Generic;
@@ -6,21 +37,6 @@ using System.Diagnostics;
 
 public class Program
 {
-	static private void PrintList<T>(List<T> list)
-	{
-		Console.Write("[");
-		if (list.Count > 0)
-		{
-			Console.Write(list[0]);
-			for(int i = 1; i < list.Count; i++)
-			{
-				Console.Write(", ");
-				Console.Write(list[i]);
-			}
-		}
-		Console.WriteLine("]");
-	}
-
 	static private void GetVideoInfo(string fileName, out int width, out int height, out double length)
 	{
 		width = height = 0;
@@ -39,19 +55,16 @@ public class Program
 		string output = proc.StandardOutput.ReadToEnd();
 		
 		string[] outputLines = output.Split(new char[] { '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-		/*
-		foreach(string s in outputLines)
+		if (outputLines.Length != 3)
 		{
-			Console.WriteLine(s);
+			Console.WriteLine("Trouble reading file " + fileName);
 		}
-		Console.WriteLine(outputLines.Length);
-		Console.ReadKey();
-		*/
-		
-		int.TryParse(outputLines[0], out width);
-		int.TryParse(outputLines[1], out height);
-		double.TryParse(outputLines[2], out length);
-		
+		else
+		{
+			int.TryParse(outputLines[0], out width);
+			int.TryParse(outputLines[1], out height);
+			double.TryParse(outputLines[2], out length);
+		}
 	}
 
 	static private void CreateTestVideo(string filename, double offset)
@@ -82,10 +95,12 @@ public class Program
 		proc.WaitForExit();
 	}
 
-	static private void CreateVideo(string filename, double offset, DateTime dt)
+	static private void CreateVideo(string filename, double offset, DateTime dt, bool writeTxt)
 	{
-		//ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -i " + filename + " -ss " + offset + " -t 1 -codec copy" + CreateFilename(dt));
-		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i " + filename + " -ss " + offset + " -t 1 -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -strict -2 " + CreateFilename(dt));
+		if(writeTxt){
+			File.WriteAllLines(CreateFilename(dt) + ".txt", new string[] {filename, offset.ToString()});
+		}
+		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i " + filename + " -ss " + offset + " -t 1 -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -codec:v libx264 -preset slow -strict -2 " + CreateFilename(dt) + ".mkv");
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = true;
@@ -99,7 +114,7 @@ public class Program
 
 	static private string CreateFilename(DateTime dt)
 	{
-		return dt.Year.ToString("D4") + "-" + dt.Month.ToString("D2") + "-" + dt.Day.ToString("D2") + ".mp4";
+		return dt.Year.ToString("D4") + "-" + dt.Month.ToString("D2") + "-" + dt.Day.ToString("D2");
 	}
 
 	static string[] days = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
@@ -113,14 +128,12 @@ public class Program
 	static public void Main()
 	{
 		string folderName = null;
-		//folderName = "/mnt/c/Users/Fons/Desktop/testeterrr/";
+		folderName = "/mnt/c/Users/Fons/OneDrive/onesecondaday(5jul17-present)/";
 		while (string.IsNullOrWhiteSpace(folderName) || !Directory.Exists(folderName))
 		{
 			Console.WriteLine("Folder name:");
 			folderName = Console.ReadLine();
 		}
-
-
 
 		List<string> fileNames = Directory.GetFiles(folderName).ToList();
 		int count = fileNames.Count;
@@ -140,8 +153,6 @@ public class Program
 			int w, h;
 			double l;
 			GetVideoInfo(fileNames[i], out w, out h, out l);
-
-			//Console.WriteLine(w);
 
 			lengths.Add(l);
 			widths.Add(w);
@@ -163,23 +174,20 @@ public class Program
 
 		List<DateTime> dates = fileNames.Select(f => new FileInfo(f).LastWriteTime).ToList();
 
-
 		var firstDay = dates.Min().Date;
 		var lastDay = dates.Max().Date;
-
-		//Console.WriteLine(firstDay);
-		//Console.WriteLine(lastDay);
-
-		//CreateTestVideo(fileNames[0], 0.0);
-		//CreateVideo(fileNames[0], 1.0, dates[0]);
-		//Console.WriteLine(CreateDateString(dates[0]));
-
-
 		
 		for(DateTime date = firstDay; date <= lastDay; date = date.AddDays(1))
 		{
+			
 			List<int> indices = Enumerable.Range(0, count).Where(i => dates[i].Date == date).ToList();
 			Console.WriteLine("{0}: {1} videos found.", date.ToShortDateString(), indices.Count);
+			if(File.Exists(CreateFilename(date) + ".txt")){
+				Console.WriteLine("Already selected, continue? [y/n]");
+				if(Console.ReadKey().KeyChar.ToString().ToLower() == "y"){
+					continue;
+				}
+			}
 			var num = indices.Count;
 			if (indices.Count > 0)
 			{
@@ -227,19 +235,19 @@ public class Program
 						CreateTestVideo(fileNames[vidNum], offset);
 
 						Console.WriteLine("Satisfied? [y/n]");
-						done = Console.ReadKey().KeyChar.ToString().ToLower() == "y";
+						string consoleInput = Console.ReadKey().KeyChar.ToString();
+						if(consoleInput == "r"){
+							CreateVideo(fileNames[vidNum], offset, dates[vidNum], false);
+						}
+						done = consoleInput.ToLower() == "y";
 						Console.WriteLine();
 						if (done)
 						{
-							CreateVideo(fileNames[vidNum], offset, dates[vidNum]);
+							CreateVideo(fileNames[vidNum], offset, dates[vidNum], true);
 						}
 					}
 				}
-
 			}
 		}
-		
-		//Console.WriteLine(File.Exists(@"/mnt/c/Users/Fons/Desktop/test.MOV"));
-		//Console.WriteLine(new FileInfo(@"/mnt/c/Users/Fons/Desktop/test.MOV").LastWriteTime);
 	}
 }
