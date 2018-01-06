@@ -128,7 +128,7 @@ public class Program
 	static public void Main()
 	{
 		string folderName = null;
-		folderName = "/mnt/c/Users/Fons/OneDrive/onesecondaday(5jul17-present)/";
+		//folderName = "/mnt/c/Users/Fons/OneDrive/onesecondaday(5jul17-present)/";
 		while (string.IsNullOrWhiteSpace(folderName) || !Directory.Exists(folderName))
 		{
 			Console.WriteLine("Folder name:");
@@ -234,7 +234,7 @@ public class Program
 					{
 						CreateTestVideo(fileNames[vidNum], offset);
 
-						Console.WriteLine("Satisfied? [y/n]");
+						Console.WriteLine("Satisfied? [y/n] or [r] to render without continuing");
 						string consoleInput = Console.ReadKey().KeyChar.ToString();
 						if(consoleInput == "r"){
 							CreateVideo(fileNames[vidNum], offset, dates[vidNum], false);
