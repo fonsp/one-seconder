@@ -24,6 +24,10 @@ ffmpeg -i in.mov -vf 'transpose=2' -strict -2 out.mov
 1 = 90Clockwise
 2 = 90CounterClockwise
 
+Flip video with:
+
+ffmpeg -i in.mov -vf 'hflip,vflip' -strict -2 out.mov
+
 Pad a vertical video with:
 
 ffmpeg -i IMG_0131.MOV -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -strict -2 IMG_0131_pad.mov
