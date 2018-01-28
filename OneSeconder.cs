@@ -45,7 +45,7 @@ public class Program
 	{
 		width = height = 0;
 		length = 0.0;
-		ProcessStartInfo psi = new ProcessStartInfo("ffprobe", "-v error -select_streams v:0 -show_entries stream=width,height,duration -of default=noprint_wrappers=1:nokey=1 " + fileName);
+		ProcessStartInfo psi = new ProcessStartInfo("ffprobe", "-v error -select_streams v:0 -show_entries stream=width,height,duration -of default=noprint_wrappers=1:nokey=1 \"" + fileName + "\"");
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = true;
@@ -73,7 +73,7 @@ public class Program
 
 	static private void CreateTestVideo(string filename, double offset)
 	{
-		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i " + filename + " -ss " + offset + " -t 1 -codec copy testScreen.mp4");
+		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i \"" + filename + "\" -ss " + offset + " -t 1 -codec copy testScreen.mp4");
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = false;
@@ -87,7 +87,7 @@ public class Program
 
 	static private void CreateTestVideo(string filename)
 	{
-		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i " + filename + " -codec copy testScreen.mp4");
+		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i \"" + filename + "\" -codec copy testScreen.mp4");
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = false;
@@ -104,7 +104,7 @@ public class Program
 		if(writeTxt){
 			File.WriteAllLines(CreateFilename(dt) + ".txt", new string[] {filename, offset.ToString()});
 		}
-		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i " + filename + " -ss " + offset + " -t 1 -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -codec:v libx264 -preset slow -strict -2 " + CreateFilename(dt) + ".mkv");
+		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i \"" + filename + "\" -ss " + offset + " -t 1 -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -codec:v libx264 -preset slow -strict -2 " + CreateFilename(dt) + ".mkv");
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = true;
