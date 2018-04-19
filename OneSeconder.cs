@@ -6,7 +6,7 @@ http://github.com/fons-/one-seconder
 AFTER SELECTING SECONDS:
 
 Combine videos using:
-ffmpeg -f concat -safe 0 -i mkvlist.txt -c:v libx264 -strict -2 out.mp4
+$ ffmpeg -f concat -safe 0 -i mkvlist.txt -c:v libx264 -strict -2 out.mp4
 
 Where mkvlist.txt looks like:
 
@@ -18,19 +18,27 @@ etc
 BEFORE SELECTING SECONDS:
 
 Rotate video with:
+$ ffmpeg -i in.mov -vf 'transpose=2' -strict -2 out.mov
 
-ffmpeg -i in.mov -vf 'transpose=2' -strict -2 out.mov
-
+transpose:
 1 = 90Clockwise
 2 = 90CounterClockwise
 
 Flip video with:
-
-ffmpeg -i in.mov -vf 'hflip,vflip' -strict -2 out.mov
+$ ffmpeg -i in.mov -vf 'hflip,vflip' -strict -2 out.mov
 
 Pad a vertical video with:
+$ ffmpeg -i IMG_0131.MOV -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -strict -2 IMG_0131_pad.mov
 
-ffmpeg -i IMG_0131.MOV -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -strict -2 IMG_0131_pad.mov
+MISCELLANEOUS:
+
+On Windows 10 with iOS: import videos using the Photos app to preserve timestamps. 
+On Windows: Use BulkFileChanger to change timestamps.
+
+Copy 'modified' date (used by the program) between files:
+$ touch -r from.mp4 to.mp4
+
+
 */
 
 using System;
