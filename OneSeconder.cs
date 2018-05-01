@@ -145,10 +145,11 @@ public class Program
 
 	static public void Main()
 	{
+		Console.WriteLine("One seconder - visit https://github.com/fons-/one-seconder for more info and instructions.");
 		string folderName = null;
 		while (string.IsNullOrWhiteSpace(folderName) || !Directory.Exists(folderName))
 		{
-			Console.WriteLine("Folder name:");
+			Console.WriteLine("Source folder for videos: (full path)");
 			folderName = Console.ReadLine();
 		}
 
@@ -186,7 +187,7 @@ public class Program
 
 		//var toRemove = Enumerable.Range(0, count).Where(i => lengths[i] < 1.0 || widths[i] != 1920 || heights[i] != 1080).ToList();
 		var toRemove = Enumerable.Range(0, count).Where(i => lengths[i] < lengthPerDay).ToList();
-		Console.WriteLine("Ignoring {0} short (<"+lengthPerDay+" sec) clips.", toRemove.Count);
+		Console.WriteLine("Ignoring {0} short (<{1} sec) clip{2}.", toRemove.Count, lengthPerDay, toRemove.Count == 1 ? "" : "s");
 
 		for(int i = 0; i < toRemove.Count; i++)
 		{
@@ -235,7 +236,7 @@ public class Program
 					double offset = -1.0;
 					while ((!skip) && (offset < 0.0 || offset >= length))
 					{
-						Console.WriteLine("Choose offset: [0.0 - {0}] or [full] or [skip]", length - lengthPerDay);
+						Console.WriteLine("Choose offset: [0.0 - {0}], [full] for an uncut preview or [skip] to ignore this day", length - lengthPerDay);
 						string input = Console.ReadLine();
 						if (input == "full")
 						{
@@ -257,7 +258,7 @@ public class Program
 					{
 						CreateTestVideo(fileNames[vidNum], offset, lengthPerDay);
 
-						Console.WriteLine("Satisfied? [y/n] or [r] to render without continuing");
+						Console.WriteLine("Satisfied with preview? [y/n] or [r] to render without continuing to the next day (in case the preview is unclear)");
 						string consoleInput = Console.ReadKey().KeyChar.ToString();
 						Console.WriteLine();
 						if(consoleInput == "r"){
