@@ -1,7 +1,7 @@
 /*
 one-seconder
-Copyright 2018, Fons van der Plas
-http://github.com/fons-/one-seconder
+by Fons van der Plas
+http://github.com/fonsp/one-seconder
 
 AFTER SELECTING SECONDS:
 
@@ -52,6 +52,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
+using Newtonsoft.Json;
 
 public class Program
 {
@@ -63,6 +64,7 @@ public class Program
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = true;
+		//psi.RedirectStandardError = true;
 
 		Process proc = new Process();
 		proc.StartInfo = psi;
@@ -73,7 +75,7 @@ public class Program
 		string output = proc.StandardOutput.ReadToEnd();
 
 		string[] outputLines = output.Split(new char[] { '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-		if (outputLines.Length != 3)
+		if(outputLines.Length != 3)
 		{
 			Console.WriteLine("Trouble reading file " + fileName);
 		}
@@ -85,18 +87,23 @@ public class Program
 		}
 	}
 
+	static Process runningProcess = null;
+
 	static private void CreateTestVideo(string filename, double offset, double length)
 	{
-		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i \"" + filename + "\" -ss " + offset + " -t " + length + " -codec copy testScreen.mp4");
+		//ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i \"" + filename + "\" -ss " + offset + " -t " + length + " -codec copy testScreen.mp4");
+		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i \"" + filename + "\" -ss " + offset + " -t " + length + " -codec:a copy -codec:v libx264 -preset ultrafast testScreen.mp4");
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = false;
 
-		Process proc = new Process();
-		proc.StartInfo = psi;
-
-		proc.Start();
-		proc.WaitForExit();
+		if(runningProcess != null)
+		{
+			runningProcess.WaitForExit();
+		}
+		runningProcess = new Process();
+		runningProcess.StartInfo = psi;
+		runningProcess.Start();
 	}
 
 	static private void CreateTestVideo(string filename)
@@ -106,28 +113,33 @@ public class Program
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = false;
 
-		Process proc = new Process();
-		proc.StartInfo = psi;
-
-		proc.Start();
-		proc.WaitForExit();
+		if(runningProcess != null)
+		{
+			runningProcess.WaitForExit();
+		}
+		runningProcess = new Process();
+		runningProcess.StartInfo = psi;
+		runningProcess.Start();
 	}
 
 	static private void CreateVideo(string filename, double offset, double length, DateTime dt, bool writeTxt)
 	{
-		if(writeTxt){
-			File.WriteAllLines(CreateFilename(dt) + ".txt", new string[] {filename, offset.ToString(), length.ToString()});
+		if(writeTxt)
+		{
+			File.WriteAllLines(CreateFilename(dt) + ".txt", new string[] { filename, offset.ToString(), length.ToString() });
 		}
 		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i \"" + filename + "\" -ss " + offset + " -t " + length + " -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -codec:v libx264 -preset slow -strict -2 " + CreateFilename(dt) + ".mkv");
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = true;
 
-		Process proc = new Process();
-		proc.StartInfo = psi;
-
-		proc.Start();
-		proc.WaitForExit();
+		if(runningProcess != null)
+		{
+			runningProcess.WaitForExit();
+		}
+		runningProcess = new Process();
+		runningProcess.StartInfo = psi;
+		runningProcess.Start();
 	}
 
 	static private string CreateFilename(DateTime dt)
@@ -135,26 +147,156 @@ public class Program
 		return dt.Year.ToString("D4") + "-" + dt.Month.ToString("D2") + "-" + dt.Day.ToString("D2");
 	}
 
-	static string[] days = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
-	static string[] months = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+	//static string[] days = { "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su" };
+	static string[] months = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 
 	static private string CreateDateString(DateTime dt)
 	{
-		return dt.Day + " " + months[dt.Month-1] + ", " + dt.Year;
+		return dt.Day + " " + months[dt.Month - 1] + ", " + dt.Year;
 	}
+
+	public class VideoRecord
+	{
+		public string jsonPath;
+		public string parentDir;
+		public string videoFileName;
+		public DateTime dateTime;
+		public double length;
+		public int width, height;
+
+		public VideoRecord(string jsonPath, DateTime dateTime, double length, int width, int height)
+		{
+			this.jsonPath = jsonPath;
+			this.parentDir = Path.GetDirectoryName(jsonPath);
+			this.videoFileName = Path.GetFileName(jsonPath.Substring(0, jsonPath.Length - 5));
+			this.dateTime = dateTime;
+			this.length = length;
+			this.width = width;
+			this.height = height;
+		}
+
+		public override string ToString()
+		{
+			return dateTime.ToString() + " - (" + length + " sec): " + jsonPath;
+		}
+	}
+
+	public struct Rotation
+	{
+		public string command, longName, abbreviation;
+		public Rotation(string command, string longName, string abbreviation)
+		{
+			this.command = command;
+			this.longName = longName;
+			this.abbreviation = abbreviation;
+		}
+	}
+
+	static Rotation defaultRotation = new Rotation(null, "default", "default");
+	static private Rotation[] rotations = new Rotation[] {
+		defaultRotation,
+		new Rotation("transpose=1", "clockwise", "c"),
+		new Rotation("transpose=2", "counter-clockwise", "cc"),
+		new Rotation("vflip,hflip", "flipped", "flip")
+	};
+
+	static private string CreateModifiedVideo(VideoRecord video, Rotation rotation, bool brighter, bool pad)
+	{
+		string newFilename =
+			(pad ? "pad" : "") +
+			(brighter ? "bright" : "") +
+			(rotation.abbreviation != "default" ? rotation.abbreviation : "") +
+			video.videoFileName;
+		string newPath = Path.Combine(video.parentDir, newFilename);
+
+		if(runningProcess != null)
+		{
+			runningProcess.WaitForExit();
+		}
+
+		if(File.Exists(newPath))
+		{
+			return newPath;
+		}
+
+		ProcessStartInfo psi;
+
+		if(pad)
+		{
+			string defaultPath = CreateModifiedVideo(video, rotation, brighter, false);
+			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+			Console.WriteLine("-i \"" + defaultPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+		}
+		else if(brighter)
+		{
+			string defaultPath = CreateModifiedVideo(video, rotation, false, pad);
+			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -vf \"curves = all = '0/0 .3/.7 .9/1 1/1'\" -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+
+		}
+		else if(rotation.abbreviation != "default")
+		{
+			string defaultPath = CreateModifiedVideo(video, defaultRotation, brighter, pad);
+			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -vf '" + rotation.command + "' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+			Console.WriteLine("-i \"" + defaultPath + "\" -vf '" + rotation.command + "' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+		}
+		else
+		{
+			return newPath;
+		}
+
+		psi.UseShellExecute = false;
+		psi.CreateNoWindow = true;
+		psi.RedirectStandardOutput = true;
+		psi.RedirectStandardError = true;
+
+
+		runningProcess = new Process();
+		runningProcess.StartInfo = psi;
+		runningProcess.Start();
+
+		return newPath;
+	}
+
 
 	static public void Main()
 	{
+		Console.WriteLine();
+		Console.ForegroundColor = ConsoleColor.Yellow;
 		Console.WriteLine("One seconder - visit https://github.com/fons-/one-seconder for more info and instructions.");
+		Console.ResetColor();
+		Console.WriteLine();
+
 		string folderName = null;
-		while (string.IsNullOrWhiteSpace(folderName) || !Directory.Exists(folderName))
+		folderName = "/mnt/c/Users/fonsv/Pictures/takeout/2019janfebmar";
+		while(string.IsNullOrWhiteSpace(folderName) || !Directory.Exists(folderName))
 		{
-			Console.WriteLine("Source folder for videos: (full path)");
+			Console.WriteLine("Google Takeout folder (should contain 'archive_browser.html'):");
 			folderName = Console.ReadLine();
+
+			if(Directory.Exists(folderName))
+			{
+				if(!Directory.GetFiles(folderName, "archive_browser.html").Any())
+				{
+					Console.WriteLine("Not a Google Takout folder.");
+					folderName = null;
+				}
+			}
+			else
+			{
+				Console.WriteLine("Directory does not exist.");
+			}
 		}
 
-		List<string> fileNames = Directory.GetFiles(folderName).ToList();
-		int count = fileNames.Count;
+		string[] videoExtensions = new string[] { "mov", "MOV", "mp4", "MP4", "mkv", "MKV" };
+		var videoJsonExtensions = videoExtensions.Select(s => "." + s + ".json").ToList();
+
+		List<string> jsonFileNames = Directory.EnumerateFiles(folderName, "*.json", SearchOption.AllDirectories)
+			.Where(s => videoJsonExtensions.Where(s.EndsWith).Any())
+			.ToList();
+
+		jsonFileNames = jsonFileNames.Take(10).ToList();
+
+		int count = jsonFileNames.Count;
 
 		Console.WriteLine("Reading video lengths...");
 
@@ -162,7 +304,7 @@ public class Program
 		List<int> widths = new List<int>();
 		List<int> heights = new List<int>();
 
-		for (int i = 0; i < count; i++)
+		for(int i = 0; i < count; i++)
 		{
 			Console.CursorLeft = 0;
 			Console.Write("    ");
@@ -170,7 +312,7 @@ public class Program
 			Console.Write((100 * i / count) + "%");
 			int w, h;
 			double l;
-			GetVideoInfo(fileNames[i], out w, out h, out l);
+			GetVideoInfo(jsonFileNames[i].Substring(0, jsonFileNames[i].Length - 5), out w, out h, out l);
 
 			lengths.Add(l);
 			widths.Add(w);
@@ -178,9 +320,11 @@ public class Program
 		}
 		Console.CursorLeft = 0;
 		Console.WriteLine("100%");
+		Console.WriteLine();
 
 		double lengthPerDay = -1.0;
-		while(lengthPerDay<=0.0){
+		while(lengthPerDay <= 0.0)
+		{
 			Console.WriteLine("How many seconds per day? (Choose 1.0 for the classic length.)");
 			double.TryParse(Console.ReadLine(), out lengthPerDay);
 		}
@@ -191,33 +335,70 @@ public class Program
 
 		for(int i = 0; i < toRemove.Count; i++)
 		{
-			fileNames.RemoveAt(toRemove[i] - i);
+			jsonFileNames.RemoveAt(toRemove[i] - i);
 			lengths.RemoveAt(toRemove[i] - i);
+			widths.RemoveAt(toRemove[i] - i);
+			heights.RemoveAt(toRemove[i] - i);
 			count--;
 		}
 
-		List<DateTime> dates = fileNames.Select(f => new FileInfo(f).LastWriteTime).ToList();
+		var jsonDef = new { title = "", photoTakenTime = new { timestamp = -1 } };
 
-		var firstDay = dates.Min().Date;
-		var lastDay = dates.Max().Date;
+		List<VideoRecord> videos = jsonFileNames.Select((f, i) => new VideoRecord(
+			f,
+			DateTimeOffset.FromUnixTimeSeconds(
+				JsonConvert.DeserializeAnonymousType(File.ReadAllText(f), jsonDef).photoTakenTime.timestamp
+				).UtcDateTime,
+			lengths[i],
+			widths[i],
+			heights[i]
+			)).ToList();
+
+		Console.WriteLine();
+		double dayStart = double.MinValue;
+		while(dayStart == double.MinValue)
+		{
+			Console.WriteLine("At what hour does a new day start? (Choose 0.0 for midnight)");
+			double.TryParse(Console.ReadLine(), out dayStart);
+		}
+
+		Console.WriteLine("(Using local time zone with daylight saving based on recording date.)");
+
+		videos.ForEach(v =>
+		{
+			v.dateTime = v.dateTime.AddHours(-dayStart).ToLocalTime();
+		});
+
+		var firstDay = videos.Min(v => v.dateTime).Date;
+		var lastDay = videos.Max(v => v.dateTime).Date;
+
+		videos.ForEach(v => Console.WriteLine(v));
 
 		for(DateTime date = firstDay; date <= lastDay; date = date.AddDays(1))
 		{
+			//List<int> indices = Enumerable.Range(0, count).Where(i => dates[i].Date == date).ToList();
+			var todaysVideos = videos.Where(v => v.dateTime.Date == date).ToList();
+			var num = todaysVideos.Count();
 
-			List<int> indices = Enumerable.Range(0, count).Where(i => dates[i].Date == date).ToList();
-			Console.WriteLine("{0}: {1} videos found.", date.ToShortDateString(), indices.Count);
-			if(File.Exists(CreateFilename(date) + ".txt")){
+			Console.WriteLine("{0}: {1} videos found.", date.ToString("d MMM yyyy"), num);
+			if(File.Exists(CreateFilename(date) + ".txt"))
+			{
 				Console.WriteLine("Already selected, continue? [y/n]");
-				if(Console.ReadKey().KeyChar.ToString().ToLower() == "y"){
+				if(Console.ReadKey().KeyChar.ToString().ToLower() == "y")
+				{
 					continue;
 				}
 			}
-			var num = indices.Count;
-			if (indices.Count > 0)
+
+			if(num > 0)
 			{
-				bool done = false;
-				while (!done)
+				bool doneWithToday = false;
+				while(!doneWithToday)
 				{
+					Rotation chosenRotation = defaultRotation;
+					bool chosenBrighter = false;
+					bool chosenPad = false;
+
 					int index = 0;
 					if(num > 1)
 					{
@@ -228,50 +409,111 @@ public class Program
 							int.TryParse(Console.ReadLine(), out index);
 						}
 						index--;
-					}
-					int vidNum = indices[index];
-					double length = lengths[vidNum];
 
-					bool skip = false;
+						chosenRotation = defaultRotation;
+						chosenBrighter = false;
+						chosenPad = false;
+					}
+
+					VideoRecord video = todaysVideos[index];
+					double length = video.length;
+
+					string chosenPath = null;
+
+					bool skipToday = false;
 					double offset = -1.0;
-					while ((!skip) && (offset < 0.0 || offset >= length))
+
+					while((!skipToday) && (offset < 0.0 || offset >= length))
 					{
 						Console.WriteLine("Choose offset: [0.0 - {0}], [full] for an uncut preview or [skip] to ignore this day", length - lengthPerDay);
 						string input = Console.ReadLine();
-						if (input == "full")
+
+						bool modifiedCommand = false;
+
+
+						if(rotations.Where(r => r.abbreviation == input).Any())
 						{
-							CreateTestVideo(fileNames[vidNum]);
+							chosenRotation = rotations.Where(r => r.abbreviation == input).First();
+							modifiedCommand = true;
 						}
-						else if (input == "skip")
+						switch(input)
 						{
-							skip = true;
-							done = true;
+							case "bright":
+								modifiedCommand = true;
+								chosenBrighter = true;
+								break;
+							case "dark":
+								modifiedCommand = true;
+								chosenBrighter = false;
+								break;
+							case "pad":
+								modifiedCommand = true;
+								chosenPad = true;
+								break;
+							case "unpad":
+								modifiedCommand = true;
+								chosenPad = false;
+								break;
+						}
+
+						chosenPath = CreateModifiedVideo(video, chosenRotation, chosenBrighter, chosenPad);
+
+						if(input == "full")
+						{
+							Console.ForegroundColor = ConsoleColor.Yellow;
+							Console.Write("Showing preview with {0} orientation", chosenRotation.longName);
+							if(chosenBrighter)
+							{
+								Console.Write(", brightened");
+							}
+							if(chosenPad)
+							{
+								Console.Write(", padded");
+							}
+							Console.WriteLine("...");
+							Console.ResetColor();
+							CreateTestVideo(chosenPath);
+						}
+						else if(input == "back")
+						{
+							skipToday = true;
+						}
+						else if(input == "skip")
+						{
+							skipToday = true;
+							doneWithToday = true;
 							break;
 						}
-						else
+						else if(!modifiedCommand)
 						{
 							double.TryParse(input, out offset);
 						}
 					}
 
-					if (!skip)
+					if(!skipToday)
 					{
-						CreateTestVideo(fileNames[vidNum], offset, lengthPerDay);
+						CreateTestVideo(chosenPath, offset, lengthPerDay);
 
 						Console.WriteLine("Satisfied with preview? [y/n] or [r] to render without continuing to the next day (in case the preview is unclear)");
 						string consoleInput = Console.ReadKey().KeyChar.ToString();
 						Console.WriteLine();
-						if(consoleInput == "r"){
-							CreateVideo(fileNames[vidNum], offset, lengthPerDay, dates[vidNum], false);
-						}
-						done = consoleInput.ToLower() == "y";
-						if (done)
+						if(consoleInput == "r")
 						{
-							CreateVideo(fileNames[vidNum], offset, lengthPerDay, dates[vidNum], true);
+							CreateVideo(chosenPath, offset, lengthPerDay, video.dateTime, false);
+						}
+						doneWithToday = consoleInput.ToLower() == "y";
+						if(doneWithToday)
+						{
+							CreateVideo(chosenPath, offset, lengthPerDay, video.dateTime, true);
 						}
 					}
 				}
 			}
+		}
+
+		if(runningProcess != null)
+		{
+			runningProcess.WaitForExit();
 		}
 	}
 }
