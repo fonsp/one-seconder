@@ -19,28 +19,11 @@ BEFORE SELECTING SECONDS:
 Make sure that every video is 1080p, horizontal, and 30fps.
 Use the following commands, or the *.sh scripts in this repository (which also preserve the timestamp).
 
-Rotate video with:
-$ ffmpeg -i in.mov -vf 'transpose=2' -strict -2 out.mov
-
-transpose
-1 = 90Clockwise
-2 = 90CounterClockwise
-
-Flip a video 180 degrees with:
-$ ffmpeg -i in.mov -vf 'hflip,vflip' -strict -2 out.mov
-
-Pad a vertical video with:
-$ ffmpeg -i in.mov -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -strict -2 out.mp4
-
 Upscale a (horizontal) video to 1080p:
 $ ffmpeg -i in.mp4 -vf scale=1920:1080 -strict -2 out.mp4
 
 Convert a 120fps iPhone slo-mo video to a slow 30fps video (remember to upscale the output to 1080p):
 $ ffmpeg -i in.mov -vf "setpts=4.0*PTS" -af "atempo=0.5,atempo=0.5" -r 30 -strict -2 out.mp4
-
-MISCELLANEOUS:
-On Windows 10 with iOS: import videos using the Photos app to preserve timestamps.
-On Windows: Use BulkFileChanger to change timestamps.
 
 Copy 'modified' date (used by the program) between files:
 $ touch -r from.mp4 to.mp4
@@ -58,9 +41,10 @@ public class Program
 {
 	static private void GetVideoInfo(string fileName, out int width, out int height, out double length)
 	{
+		int orientation = 0;
 		width = height = 0;
 		length = 0.0;
-		ProcessStartInfo psi = new ProcessStartInfo("ffprobe", "-v error -select_streams v:0 -show_entries stream=width,height,duration -of default=noprint_wrappers=1:nokey=1 \"" + fileName + "\"");
+		ProcessStartInfo psi = new ProcessStartInfo("ffprobe", "-loglevel error -select_streams v:0 -show_entries stream_tags=rotate:stream=width,height,duration -of default=nw=1:nk=1 \"" + fileName + "\"");
 		psi.UseShellExecute = false;
 		psi.CreateNoWindow = true;
 		psi.RedirectStandardOutput = true;
@@ -75,7 +59,7 @@ public class Program
 		string output = proc.StandardOutput.ReadToEnd();
 
 		string[] outputLines = output.Split(new char[] { '\r', '\n', '\t', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-		if(outputLines.Length != 3)
+		if(!(outputLines.Length == 3 || outputLines.Length == 4))
 		{
 			Console.WriteLine("Trouble reading file " + fileName);
 		}
@@ -84,6 +68,16 @@ public class Program
 			int.TryParse(outputLines[0], out width);
 			int.TryParse(outputLines[1], out height);
 			double.TryParse(outputLines[2], out length);
+			if(outputLines.Length == 4)
+			{
+				int.TryParse(outputLines[3], out orientation);
+			}
+			if((orientation / 90) % 2 != 0)
+			{
+				int temp = width;
+				width = height;
+				height = temp;
+			}
 		}
 	}
 
@@ -122,24 +116,31 @@ public class Program
 		runningProcess.Start();
 	}
 
-	static private void CreateVideo(string filename, double offset, double length, DateTime dt, bool writeTxt)
+	static private void CreateCompileScriptVideo(string videoPath, double offset, double length, DateTime dt, bool pad, bool upscale, bool writeTxt)
 	{
 		if(writeTxt)
 		{
-			File.WriteAllLines(CreateFilename(dt) + ".txt", new string[] { filename, offset.ToString(), length.ToString() });
+			File.WriteAllLines(CreateFilename(dt) + ".txt", new string[] { videoPath, offset.ToString(), length.ToString() });
 		}
-		ProcessStartInfo psi = new ProcessStartInfo("ffmpeg", "-y -v error -i \"" + filename + "\" -ss " + offset + " -t " + length + " -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -codec:v libx264 -preset slow -strict -2 " + CreateFilename(dt) + ".mkv");
-		psi.UseShellExecute = false;
-		psi.CreateNoWindow = true;
-		psi.RedirectStandardOutput = true;
 
-		if(runningProcess != null)
+		List<string> commands = new List<string>();
+		
+		commands.Add("");
+
+		string newPath = videoPath;
+		if(upscale)
 		{
-			runningProcess.WaitForExit();
+			newPath = Path.Combine(Path.GetDirectoryName(newPath), "upscale" + Path.GetFileName(newPath));
+			commands.Add("ffmpeg -i \"" + videoPath + "\" -vf scale=1920:1080 -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 		}
-		runningProcess = new Process();
-		runningProcess.StartInfo = psi;
-		runningProcess.Start();
+		if(pad)
+		{
+			newPath = Path.Combine(Path.GetDirectoryName(newPath), "pad" + Path.GetFileName(newPath));
+			commands.Add("ffmpeg -i \"" + videoPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+		}
+		commands.Add("ffmpeg -y -v error -i \"" + newPath + "\" -ss " + offset + " -t " + length + " -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -codec:v libx264 -preset slow -strict -2 " + CreateFilename(dt) + ".mkv");
+
+		File.WriteAllLines(CreateFilename(dt) + ".sh", commands.ToArray());
 	}
 
 	static private string CreateFilename(DateTime dt)
@@ -225,7 +226,7 @@ public class Program
 		{
 			string defaultPath = CreateModifiedVideo(video, rotation, brighter, false);
 			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
-			Console.WriteLine("-i \"" + defaultPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+			//Console.WriteLine("-i \"" + defaultPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 		}
 		else if(brighter)
 		{
@@ -237,7 +238,7 @@ public class Program
 		{
 			string defaultPath = CreateModifiedVideo(video, defaultRotation, brighter, pad);
 			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -vf '" + rotation.command + "' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
-			Console.WriteLine("-i \"" + defaultPath + "\" -vf '" + rotation.command + "' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+			//Console.WriteLine("-i \"" + defaultPath + "\" -vf '" + rotation.command + "' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 		}
 		else
 		{
@@ -262,12 +263,11 @@ public class Program
 	{
 		Console.WriteLine();
 		Console.ForegroundColor = ConsoleColor.Yellow;
-		Console.WriteLine("One seconder - visit https://github.com/fons-/one-seconder for more info and instructions.");
+		Console.WriteLine("One seconder - visit https://github.com/fonsp/one-seconder for more info and instructions.");
 		Console.ResetColor();
 		Console.WriteLine();
 
 		string folderName = null;
-		folderName = "/mnt/c/Users/fonsv/Pictures/takeout/2019janfebmar";
 		while(string.IsNullOrWhiteSpace(folderName) || !Directory.Exists(folderName))
 		{
 			Console.WriteLine("Google Takeout folder (should contain 'archive_browser.html'):");
@@ -294,7 +294,7 @@ public class Program
 			.Where(s => videoJsonExtensions.Where(s.EndsWith).Any())
 			.ToList();
 
-		jsonFileNames = jsonFileNames.Take(10).ToList();
+		//jsonFileNames = jsonFileNames.Take(10).ToList();
 
 		int count = jsonFileNames.Count;
 
@@ -372,7 +372,7 @@ public class Program
 		var firstDay = videos.Min(v => v.dateTime).Date;
 		var lastDay = videos.Max(v => v.dateTime).Date;
 
-		videos.ForEach(v => Console.WriteLine(v));
+		//videos.ForEach(v => Console.WriteLine(v));
 
 		for(DateTime date = firstDay; date <= lastDay; date = date.AddDays(1))
 		{
@@ -423,6 +423,8 @@ public class Program
 					bool skipToday = false;
 					double offset = -1.0;
 
+					string info;
+
 					while((!skipToday) && (offset < 0.0 || offset >= length))
 					{
 						Console.WriteLine("Choose offset: [0.0 - {0}], [full] for an uncut preview or [skip] to ignore this day", length - lengthPerDay);
@@ -457,20 +459,22 @@ public class Program
 						}
 
 						chosenPath = CreateModifiedVideo(video, chosenRotation, chosenBrighter, chosenPad);
+						info = "Showing preview with " + chosenRotation.longName + " orientation";
+
+						if(chosenBrighter)
+						{
+							info += ", brightened";
+						}
+						if(chosenPad)
+						{
+							info += ", padded";
+						}
+						info += "...";
 
 						if(input == "full")
 						{
 							Console.ForegroundColor = ConsoleColor.Yellow;
-							Console.Write("Showing preview with {0} orientation", chosenRotation.longName);
-							if(chosenBrighter)
-							{
-								Console.Write(", brightened");
-							}
-							if(chosenPad)
-							{
-								Console.Write(", padded");
-							}
-							Console.WriteLine("...");
+							Console.WriteLine(info);
 							Console.ResetColor();
 							CreateTestVideo(chosenPath);
 						}
@@ -492,19 +496,49 @@ public class Program
 
 					if(!skipToday)
 					{
+						Console.ForegroundColor = ConsoleColor.Yellow;
+						Console.WriteLine(info);
+						Console.ResetColor();
 						CreateTestVideo(chosenPath, offset, lengthPerDay);
 
 						Console.WriteLine("Satisfied with preview? [y/n] or [r] to render without continuing to the next day (in case the preview is unclear)");
 						string consoleInput = Console.ReadKey().KeyChar.ToString();
 						Console.WriteLine();
+
+						int width, height;
+						if(chosenRotation.abbreviation[0] == 'c')
+						{
+							width = video.height;
+							height = video.width;
+						}
+						else
+						{
+							width = video.width;
+							height = video.height;
+						}
+
+						bool willUpscale = false, willPad = false;
+
+						if(width > height)
+						{
+							if(width < 1920)
+							{
+								willUpscale = true;
+							}
+						}
+						else
+						{
+							willPad = true;
+						}
+
 						if(consoleInput == "r")
 						{
-							CreateVideo(chosenPath, offset, lengthPerDay, video.dateTime, false);
+							CreateCompileScriptVideo(chosenPath, offset, lengthPerDay, video.dateTime, willPad, willUpscale, false);
 						}
 						doneWithToday = consoleInput.ToLower() == "y";
 						if(doneWithToday)
 						{
-							CreateVideo(chosenPath, offset, lengthPerDay, video.dateTime, true);
+							CreateCompileScriptVideo(chosenPath, offset, lengthPerDay, video.dateTime, willPad, willUpscale, true);
 						}
 					}
 				}
