@@ -269,7 +269,7 @@ public class Program
 		Console.WriteLine();
 
 		string folderName = null;
-		folderName = "/mnt/c/Users/fonsv/Pictures/takeout/2019janfebmar";
+
 		while(string.IsNullOrWhiteSpace(folderName) || !Directory.Exists(folderName))
 		{
 			Console.WriteLine("Google Takeout folder (should contain 'archive_browser.html'):");
