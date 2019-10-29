@@ -15,19 +15,6 @@ file './2017-08-31.mkv'
 file './2017-09-01.mkv'
 etc
 
-BEFORE SELECTING SECONDS:
-Make sure that every video is 1080p, horizontal, and 30fps.
-Use the following commands, or the *.sh scripts in this repository (which also preserve the timestamp).
-
-Upscale a (horizontal) video to 1080p:
-$ ffmpeg -i in.mp4 -vf scale=1920:1080 -strict -2 out.mp4
-
-Convert a 120fps iPhone slo-mo video to a slow 30fps video (remember to upscale the output to 1080p):
-$ ffmpeg -i in.mov -vf "setpts=4.0*PTS" -af "atempo=0.5,atempo=0.5" -r 30 -strict -2 out.mp4
-
-Copy 'modified' date (used by the program) between files:
-$ touch -r from.mp4 to.mp4
-
 */
 
 using System;
@@ -116,31 +103,40 @@ public class Program
 		runningProcess.Start();
 	}
 
-	static private void CreateCompileScriptVideo(string videoPath, double offset, double length, DateTime dt, bool pad, bool upscale, bool writeTxt)
+	static private string CreateCompileScriptVideo(string videoPath, double offset, double length, DateTime dt, bool pad, bool upscale, bool writeTxt)
 	{
+		string genFileName = CreateFilename(dt);
 		if(writeTxt)
 		{
-			File.WriteAllLines(CreateFilename(dt) + ".txt", new string[] { videoPath, offset.ToString(), length.ToString() });
+			File.WriteAllLines(genFileName + ".txt", new string[] { videoPath, offset.ToString(), length.ToString() });
 		}
 
 		List<string> commands = new List<string>();
-		
+
 		commands.Add("");
+		Console.ForegroundColor = ConsoleColor.Yellow;
+		Console.Write("Compile script {0}.sh", genFileName);
 
 		string newPath = videoPath;
 		if(upscale)
 		{
+			Console.Write(" (with upscaling to 1080p)");
 			newPath = Path.Combine(Path.GetDirectoryName(newPath), "upscale" + Path.GetFileName(newPath));
 			commands.Add("ffmpeg -i \"" + videoPath + "\" -vf scale=1920:1080 -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 		}
 		if(pad)
 		{
+			Console.Write(" (with scaling and padding)");
 			newPath = Path.Combine(Path.GetDirectoryName(newPath), "pad" + Path.GetFileName(newPath));
 			commands.Add("ffmpeg -i \"" + videoPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 		}
-		commands.Add("ffmpeg -y -v error -i \"" + newPath + "\" -ss " + offset + " -t " + length + " -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -codec:v libx264 -preset slow -strict -2 " + CreateFilename(dt) + ".mkv");
+		commands.Add("ffmpeg -y -v error -i \"" + newPath + "\" -ss " + offset + " -t " + length + " -vf drawtext=\"fontfile =/usr/share/fonts/truetype/lato/Lato-Bold.ttf: text = '" + CreateDateString(dt) + "': fontcolor = white: fontsize = 48: box = 1: boxcolor = black@0.5: boxborderw = 10: x = w / 32: y = h - w / 32 - text_h\" -codec:a copy -codec:v libx264 -preset slow -strict -2 " + genFileName + ".mkv");
 
-		File.WriteAllLines(CreateFilename(dt) + ".sh", commands.ToArray());
+		File.WriteAllLines(genFileName + ".sh", commands.ToArray());
+		Console.WriteLine(" created.");
+		Console.ResetColor();
+
+		return genFileName;
 	}
 
 	static private string CreateFilename(DateTime dt)
@@ -201,10 +197,11 @@ public class Program
 		new Rotation("vflip,hflip", "flipped", "flip")
 	};
 
-	static private string CreateModifiedVideo(VideoRecord video, Rotation rotation, bool brighter, bool pad)
+	static private string CreateModifiedVideo(VideoRecord video, Rotation rotation, bool brighter, bool slow2, bool slow4)
 	{
 		string newFilename =
-			(pad ? "pad" : "") +
+			(slow2 ? "slow2" : "") +
+			(slow4 ? "slow4" : "") +
 			(brighter ? "bright" : "") +
 			(rotation.abbreviation != "default" ? rotation.abbreviation : "") +
 			video.videoFileName;
@@ -222,21 +219,25 @@ public class Program
 
 		ProcessStartInfo psi;
 
-		if(pad)
+		if(slow2)
 		{
-			string defaultPath = CreateModifiedVideo(video, rotation, brighter, false);
-			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
-			//Console.WriteLine("-i \"" + defaultPath + "\" -filter_complex 'scale=607:1080, pad=1920:1080:656:0:black' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+			string defaultPath = CreateModifiedVideo(video, rotation, brighter, false, slow4);
+			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -vf \"setpts=2.0*PTS\" -af \"atempo=0.5\" -r 30 -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
+		}
+		else if(slow4)
+		{
+			string defaultPath = CreateModifiedVideo(video, rotation, brighter, slow2, false);
+			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -vf \"setpts=4.0*PTS\" -af \"atempo=0.5,atempo=0.5\" -r 30 -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 		}
 		else if(brighter)
 		{
-			string defaultPath = CreateModifiedVideo(video, rotation, false, pad);
+			string defaultPath = CreateModifiedVideo(video, rotation, false, slow2, slow4);
 			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -vf \"curves = all = '0/0 .3/.7 .9/1 1/1'\" -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 
 		}
 		else if(rotation.abbreviation != "default")
 		{
-			string defaultPath = CreateModifiedVideo(video, defaultRotation, brighter, pad);
+			string defaultPath = CreateModifiedVideo(video, defaultRotation, brighter, slow2, slow4);
 			psi = new ProcessStartInfo("ffmpeg", "-i \"" + defaultPath + "\" -vf '" + rotation.command + "' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 			//Console.WriteLine("-i \"" + defaultPath + "\" -vf '" + rotation.command + "' -codec:v libx264 -preset slow -strict -2 \"" + newPath + "\"");
 		}
@@ -268,6 +269,7 @@ public class Program
 		Console.WriteLine();
 
 		string folderName = null;
+		folderName = "/mnt/c/Users/fonsv/Pictures/takeout/2019janfebmar";
 		while(string.IsNullOrWhiteSpace(folderName) || !Directory.Exists(folderName))
 		{
 			Console.WriteLine("Google Takeout folder (should contain 'archive_browser.html'):");
@@ -287,12 +289,21 @@ public class Program
 			}
 		}
 
+		// Due to a bug(?), snapchat videos have a `..json` extension instead of `.mp4.json`.
+
+		Directory.EnumerateFiles(folderName, "*..json", SearchOption.AllDirectories)
+			.ToList()
+			.ForEach(fn => 
+				File.Copy(fn, fn.Substring(0, fn.Length - 6) + ".mp4.json", true)
+			);
+
 		string[] videoExtensions = new string[] { "mov", "MOV", "mp4", "MP4", "mkv", "MKV" };
 		var videoJsonExtensions = videoExtensions.Select(s => "." + s + ".json").ToList();
 
 		List<string> jsonFileNames = Directory.EnumerateFiles(folderName, "*.json", SearchOption.AllDirectories)
 			.Where(s => videoJsonExtensions.Where(s.EndsWith).Any())
 			.ToList();
+
 
 		//jsonFileNames = jsonFileNames.Take(10).ToList();
 
@@ -333,6 +344,17 @@ public class Program
 		var toRemove = Enumerable.Range(0, count).Where(i => lengths[i] < lengthPerDay).ToList();
 		Console.WriteLine("Ignoring {0} short (<{1} sec) clip{2}.", toRemove.Count, lengthPerDay, toRemove.Count == 1 ? "" : "s");
 
+		Console.WriteLine();
+		double dayStart = double.MinValue;
+		while(dayStart == double.MinValue)
+		{
+			Console.WriteLine("At what hour does a new day start? (Choose 0.0 for midnight)");
+			double.TryParse(Console.ReadLine(), out dayStart);
+		}
+
+		Console.WriteLine("(Using local time zone with daylight saving based on recording date.)");
+		Console.WriteLine();
+
 		for(int i = 0; i < toRemove.Count; i++)
 		{
 			jsonFileNames.RemoveAt(toRemove[i] - i);
@@ -348,26 +370,11 @@ public class Program
 			f,
 			DateTimeOffset.FromUnixTimeSeconds(
 				JsonConvert.DeserializeAnonymousType(File.ReadAllText(f), jsonDef).photoTakenTime.timestamp
-				).UtcDateTime,
+				).UtcDateTime.AddHours(-dayStart).ToLocalTime(),
 			lengths[i],
 			widths[i],
 			heights[i]
 			)).ToList();
-
-		Console.WriteLine();
-		double dayStart = double.MinValue;
-		while(dayStart == double.MinValue)
-		{
-			Console.WriteLine("At what hour does a new day start? (Choose 0.0 for midnight)");
-			double.TryParse(Console.ReadLine(), out dayStart);
-		}
-
-		Console.WriteLine("(Using local time zone with daylight saving based on recording date.)");
-
-		videos.ForEach(v =>
-		{
-			v.dateTime = v.dateTime.AddHours(-dayStart).ToLocalTime();
-		});
 
 		var firstDay = videos.Min(v => v.dateTime).Date;
 		var lastDay = videos.Max(v => v.dateTime).Date;
@@ -384,7 +391,9 @@ public class Program
 			if(File.Exists(CreateFilename(date) + ".txt"))
 			{
 				Console.WriteLine("Already selected, continue? [y/n]");
-				if(Console.ReadKey().KeyChar.ToString().ToLower() == "y")
+				string key = Console.ReadKey().KeyChar.ToString().ToLower();
+				Console.WriteLine();
+				if(key == "y")
 				{
 					continue;
 				}
@@ -397,7 +406,8 @@ public class Program
 				{
 					Rotation chosenRotation = defaultRotation;
 					bool chosenBrighter = false;
-					bool chosenPad = false;
+					bool chosenSlow2 = false;
+					bool chosenSlow4 = false;
 
 					int index = 0;
 					if(num > 1)
@@ -412,7 +422,8 @@ public class Program
 
 						chosenRotation = defaultRotation;
 						chosenBrighter = false;
-						chosenPad = false;
+						chosenSlow2 = false;
+						chosenSlow4 = false;
 					}
 
 					VideoRecord video = todaysVideos[index];
@@ -423,11 +434,11 @@ public class Program
 					bool skipToday = false;
 					double offset = -1.0;
 
-					string info;
+					string info = "";
 
 					while((!skipToday) && (offset < 0.0 || offset >= length))
 					{
-						Console.WriteLine("Choose offset: [0.0 - {0}], [full] for an uncut preview or [skip] to ignore this day", length - lengthPerDay);
+						Console.WriteLine("Choose offset: [0.0 - {0}], [full] for an uncut preview, [skip] to ignore this day, [back] to choose another video or a modify command", length - lengthPerDay);
 						string input = Console.ReadLine();
 
 						bool modifiedCommand = false;
@@ -444,32 +455,48 @@ public class Program
 								modifiedCommand = true;
 								chosenBrighter = true;
 								break;
-							case "dark":
+							case "unbright":
 								modifiedCommand = true;
 								chosenBrighter = false;
 								break;
-							case "pad":
+							case "slow2":
 								modifiedCommand = true;
-								chosenPad = true;
+								chosenSlow2 = true;
 								break;
-							case "unpad":
+							case "unslow2":
 								modifiedCommand = true;
-								chosenPad = false;
+								chosenSlow2 = false;
+								break;
+							case "slow4":
+								modifiedCommand = true;
+								chosenSlow4 = true;
+								break;
+							case "unslow4":
+								modifiedCommand = true;
+								chosenSlow4 = false;
 								break;
 						}
 
-						chosenPath = CreateModifiedVideo(video, chosenRotation, chosenBrighter, chosenPad);
+						length = video.length;
+
+						chosenPath = CreateModifiedVideo(video, chosenRotation, chosenBrighter, chosenSlow2, chosenSlow4);
 						info = "Showing preview with " + chosenRotation.longName + " orientation";
 
 						if(chosenBrighter)
 						{
 							info += ", brightened";
 						}
-						if(chosenPad)
+						if(chosenSlow2)
 						{
-							info += ", padded";
+							info += ", slowed down 2x";
+							length *= 2.0;
 						}
-						info += "...";
+						if(chosenSlow4)
+						{
+							info += ", slowed down 4x";
+							length *= 4.0;
+						}
+						info += ".";
 
 						if(input == "full")
 						{
