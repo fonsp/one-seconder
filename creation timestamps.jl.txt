@@ -1,0 +1,5 @@
+using Dates
+
+files = readdir()
+r = [(f,unix2datetime(ctime(f))) for f in files]
+write(“creation_timestamps.txt", string(r))
